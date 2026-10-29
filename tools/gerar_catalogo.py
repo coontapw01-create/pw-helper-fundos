@@ -23,8 +23,18 @@ def slug(name):
     return (s or 'fundo')[:64]
 
 
+def split_tags(stem):
+    """'Nezuko Kamado [demon slayer, fogo]' -> ('Nezuko Kamado', ['demon slayer', 'fogo'])"""
+    m = re.match(r'^(.*?)\s*\[([^\]]*)\]\s*$', stem)
+    if not m:
+        return stem, []
+    return m.group(1), [t.strip() for t in m.group(2).split(',') if t.strip()][:8]
+
+
 def title(stem):
-    return re.sub(r'[-_]+', ' ', stem).strip().capitalize()
+    t = re.sub(r'[-_]+', ' ', stem).strip()
+    # nome escrito pelo usuario (com maiusculas) fica como esta; senao so a 1a letra maiuscula
+    return t if t != t.lower() else t.capitalize()
 
 
 def webp_durations(path):
@@ -86,7 +96,7 @@ def main():
         src = os.path.join(FUNDOS, fn)
         if not fn.lower().endswith('.webp') or not os.path.isfile(src):
             continue
-        stem = fn[:-5]
+        stem, file_tags = split_tags(fn[:-5])
         fid = slug(stem)
         while fid in used:
             fid += '-2'
@@ -102,11 +112,11 @@ def main():
         if old.get(fid, {}).get('v') != v or old.get(fid, {}).get('tg') != THUMB_GEN or not os.path.exists(tpath):
             make_thumb(im, frames, tpath, webp_durations(src))
         keep_thumbs.add(thumb)
-        m = meta.get(fid) or meta.get(stem) or {}
+        m = meta.get(fid) or meta.get(stem) or meta.get(fn[:-5]) or {}
         items.append({
-            'id': fid, 'name': m.get('name') or old.get(fid, {}).get('name') or title(stem),
+            'id': fid, 'name': m.get('name') or title(stem),
             'file': 'fundos/' + fn, 'thumb': 'thumbs/' + thumb, 'v': v, 'tv': sha(tpath), 'tg': THUMB_GEN,
-            'author': m.get('author', ''), 'tags': m.get('tags', []),
+            'author': m.get('author', ''), 'tags': m.get('tags') or file_tags,
             'added': old.get(fid, {}).get('added') or today,
             'bytes': os.path.getsize(src), 'width': w, 'height': h, 'animated': frames > 1,
         })
