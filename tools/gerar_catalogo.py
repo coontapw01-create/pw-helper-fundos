@@ -55,7 +55,9 @@ def main():
         used.add(fid)
         try:
             im = Image.open(src); w, h = im.size
-            im.seek(0); im = im.convert('RGB')
+            frames = getattr(im, 'n_frames', 1)
+            im.seek(frames // 3 if frames > 1 else 0)  # animado: miniatura de um quadro do meio (o 1o costuma ser escuro)
+            im = im.convert('RGB')
         except Exception as e:
             print('ignorado (nao e WEBP valido):', fn, e, file=sys.stderr); continue
         v = sha(src)
@@ -70,7 +72,7 @@ def main():
             'file': 'fundos/' + fn, 'thumb': 'thumbs/' + thumb, 'v': v,
             'author': m.get('author', ''), 'tags': m.get('tags', []),
             'added': old.get(fid, {}).get('added') or today,
-            'bytes': os.path.getsize(src), 'width': w, 'height': h,
+            'bytes': os.path.getsize(src), 'width': w, 'height': h, 'animated': frames > 1,
         })
     for f in os.listdir(THUMBS):
         if f.endswith('.webp') and f not in keep_thumbs:
