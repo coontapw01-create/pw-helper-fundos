@@ -12,7 +12,9 @@ from PIL import Image
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FUNDOS, THUMBS = os.path.join(ROOT, 'fundos'), os.path.join(ROOT, 'thumbs')
 CATALOG, META = os.path.join(ROOT, 'catalog.json'), os.path.join(ROOT, 'fundos.json')
-THUMB_W = 360
+THUMB_W = 240          # largura da miniatura (os cartoes tem ~150-200 px)
+THUMB_MAX_FRAMES = 120
+THUMB_GEN = 2           # muda quando o jeito de gerar miniaturas muda (forca regerar) # miniatura animada: no maximo isso de quadros (pula quadros e soma a duracao)
 
 
 def slug(name):
@@ -23,6 +25,42 @@ def slug(name):
 
 def title(stem):
     return re.sub(r'[-_]+', ' ', stem).strip().capitalize()
+
+
+def webp_durations(path):
+    """Duracao (ms) de cada quadro de um WEBP animado, lida direto dos blocos ANMF (o Pillow nem sempre informa)."""
+    out = []
+    with open(path, 'rb') as f:
+        head = f.read(12)
+        if head[:4] != b'RIFF' or head[8:12] != b'WEBP':
+            return out
+        while True:
+            h = f.read(8)
+            if len(h) < 8:
+                break
+            tag, size = h[:4], int.from_bytes(h[4:], 'little')
+            if tag == b'ANMF':
+                payload = f.read(16)
+                out.append(int.from_bytes(payload[12:15], 'little'))
+                f.seek(size - 16 + (size & 1), 1)
+            else:
+                f.seek(size + (size & 1), 1)
+    return out
+
+
+def make_thumb(im, frames, dest, durations=None):
+    """Miniatura: animada quando o fundo e animado (mesmo movimento, menor e mais leve)."""
+    if frames <= 1:
+        im.seek(0); t = im.convert('RGB'); t.thumbnail((THUMB_W, THUMB_W * 2)); t.save(dest, 'WEBP', quality=78, method=6); return
+    step = max(1, -(-frames // THUMB_MAX_FRAMES))
+    out, durs = [], []
+    for i in range(0, frames, step):
+        dur = 0
+        for j in range(i, min(i + step, frames)):
+            dur += (durations[j] if durations and j < len(durations) and durations[j] > 0 else int(im.info.get('duration') or 40))
+        im.seek(i); t = im.convert('RGB'); t.thumbnail((THUMB_W, THUMB_W * 2))
+        out.append(t); durs.append(max(20, dur))
+    out[0].save(dest, 'WEBP', save_all=True, append_images=out[1:], duration=durs, loop=0, quality=60, method=4)
 
 
 def sha(path):
@@ -56,20 +94,18 @@ def main():
         try:
             im = Image.open(src); w, h = im.size
             frames = getattr(im, 'n_frames', 1)
-            im.seek(frames // 3 if frames > 1 else 0)  # animado: miniatura de um quadro do meio (o 1o costuma ser escuro)
-            im = im.convert('RGB')
         except Exception as e:
             print('ignorado (nao e WEBP valido):', fn, e, file=sys.stderr); continue
         v = sha(src)
         thumb = f'{fid}.webp'
         tpath = os.path.join(THUMBS, thumb)
-        if old.get(fid, {}).get('v') != v or not os.path.exists(tpath):
-            t = im.copy(); t.thumbnail((THUMB_W, THUMB_W * 2)); t.save(tpath, 'WEBP', quality=78, method=6)
+        if old.get(fid, {}).get('v') != v or old.get(fid, {}).get('tg') != THUMB_GEN or not os.path.exists(tpath):
+            make_thumb(im, frames, tpath, webp_durations(src))
         keep_thumbs.add(thumb)
         m = meta.get(fid) or meta.get(stem) or {}
         items.append({
             'id': fid, 'name': m.get('name') or old.get(fid, {}).get('name') or title(stem),
-            'file': 'fundos/' + fn, 'thumb': 'thumbs/' + thumb, 'v': v,
+            'file': 'fundos/' + fn, 'thumb': 'thumbs/' + thumb, 'v': v, 'tv': sha(tpath), 'tg': THUMB_GEN,
             'author': m.get('author', ''), 'tags': m.get('tags', []),
             'added': old.get(fid, {}).get('added') or today,
             'bytes': os.path.getsize(src), 'width': w, 'height': h, 'animated': frames > 1,
