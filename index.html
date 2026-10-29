@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fundos PW Helper</title>
+<style>
+  :root { --bg:#0d1117; --card:#161b22; --line:#30363d; --text:#e6edf3; --muted:#8b949e; --acc:#22d3ee; }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --bg:#f6f8fa; --card:#fff; --line:#d0d7de; --text:#1f2328; --muted:#59636e; --acc:#0969da; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 "Segoe UI", system-ui, sans-serif; }
+  header { padding:28px 16px 8px; max-width:1200px; margin:auto; }
+  h1 { margin:0 0 4px; font-size:26px; }
+  p.sub { margin:0; color:var(--muted); }
+  .bar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; max-width:1200px; margin:14px auto 0; padding:0 16px; }
+  .bar input { flex:1; min-width:180px; padding:9px 12px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--text); font:inherit; }
+  .count { color:var(--muted); font-size:13px; }
+  main { max-width:1200px; margin:16px auto 40px; padding:0 16px; display:grid; grid-template-columns:repeat(auto-fill, minmax(170px, 1fr)); gap:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; display:flex; flex-direction:column; }
+  .th { position:relative; aspect-ratio:3/4; background:#000; }
+  .th img { width:100%; height:100%; object-fit:cover; display:block; }
+  .new { position:absolute; top:8px; left:8px; background:var(--acc); color:#000; font-size:11px; font-weight:700; padding:2px 7px; border-radius:6px; }
+  .info { padding:9px 11px 12px; display:flex; flex-direction:column; gap:3px; }
+  .info b { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .meta { color:var(--muted); font-size:12px; }
+  .tags { display:flex; gap:4px; flex-wrap:wrap; margin-top:3px; }
+  .tags span { font-size:11px; padding:1px 7px; border-radius:999px; border:1px solid var(--line); color:var(--muted); }
+  .empty { grid-column:1/-1; color:var(--muted); text-align:center; padding:40px 0; }
+  .how { max-width:1200px; margin:0 auto 40px; padding:0 16px; color:var(--muted); font-size:13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Fundos da mini-janela</h1>
+  <p class="sub">Escolha no PW Helper em <b>Skins › Fundos da mini-janela</b>. Os fundos novos aparecem lá sozinhos.</p>
+</header>
+<div class="bar"><input id="q" type="search" placeholder="Buscar por nome, autor ou tag"><span class="count" id="count"></span></div>
+<main id="grid"><div class="empty">Carregando…</div></main>
+<p class="how">Para adicionar: envie o arquivo .webp para a pasta <code>fundos/</code> do repositório. O catálogo e a miniatura são gerados automaticamente em cerca de 1 minuto.</p>
+<script>
+  const grid = document.getElementById('grid'), q = document.getElementById('q'), count = document.getElementById('count');
+  let items = [];
+  const mb = (b) => b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.round(b / 1024) + ' KB';
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  function render() {
+    const t = q.value.trim().toLowerCase();
+    const list = items.filter((x) => !t || [x.name, x.author, ...(x.tags || [])].join(' ').toLowerCase().includes(t));
+    count.textContent = `${list.length} de ${items.length}`;
+    grid.replaceChildren(...(list.length ? list.map((x) => {
+      const c = el('div', 'card'), th = el('div', 'th'), img = el('img');
+      img.loading = 'lazy'; img.alt = x.name; img.src = x.thumb || x.file; th.append(img);
+      if (x.added && Date.now() - Date.parse(x.added) < 7 * 864e5) th.append(el('span', 'new', 'NOVO'));
+      const info = el('div', 'info'); info.append(el('b', '', x.name));
+      info.append(el('div', 'meta', [x.author && 'por ' + x.author, x.width && `${x.width}×${x.height}`, x.bytes && mb(x.bytes)].filter(Boolean).join(' · ')));
+      if (x.tags && x.tags.length) { const tg = el('div', 'tags'); for (const s of x.tags) tg.append(el('span', '', s)); info.append(tg); }
+      c.append(th, info); return c;
+    }) : [el('div', 'empty', items.length ? 'Nada encontrado.' : 'Nenhum fundo ainda.')]));
+  }
+  q.addEventListener('input', render);
+  fetch('catalog.json', { cache: 'no-store' }).then((r) => r.json()).then((j) => { items = j.backgrounds || []; render(); })
+    .catch(() => { grid.replaceChildren(el('div', 'empty', 'Não foi possível carregar o catálogo.')); });
+</script>
+</body>
+</html>
